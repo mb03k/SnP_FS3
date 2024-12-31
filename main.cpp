@@ -2,9 +2,10 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
+#include <avr/delay.h>
 
-#define MIN_BR 1;
-#define HOUR_BR 1;
+uint8_t MIN_BR = 250;
+uint8_t HOUR_BR = 250;
 
 volatile uint8_t seconds = 0;
 volatile uint8_t minutes = 0;
@@ -14,13 +15,14 @@ volatile uint8_t previousRisingEdge_pb0 = 0;
 volatile uint8_t previousRisingEdge_pb1 = 0;
 volatile uint8_t previousRisingEdge_pb2 = 0;
 
-
 void handleTimeChange();
 void handleMinutes();
 void handleHours();
 
 void refreshLEDs_min();
 void refreshLEDs_hours();
+
+void goToSleep();
 
 void init_buttons() {
     // PCINT1 bzw. Pull-Up aktivieren
@@ -48,22 +50,28 @@ void init_buttons() {
 // Zeitbasis 1s
 void init_timer() {
     ASSR |= (1 << AS2);
-    TCCR2B |= (1 << CS22) | (1 << CS20); // Prescaler = 128
+    TCCR2B |= (1 << CS22) | (1 << CS20); // ps 128
+    TIMSK2 |= (1 << TOIE2);
     while (ASSR & ((1 << TCR2BUB) | (1 << OCR2BUB) | (1 << TCN2UB)));
-    OCR2A = 255; // Beispiel: Generiere einen Interrupt alle 1 Sekunde bei 32.768 Hz und Prescaler 128
-    TIMSK2 |= (1 << OCIE2A);
 }
 
 // LED Helligkeit
 void initPWM() {
-    DDRD |= (1 << PD6);
-    DDRD |= (1 << PD5);
-    // fast PWM, invertiert
-    TCCR0A |= (1 << WGM00) | (1 << WGM01) | (1 << COM0A1) | (1 << COM0A0) | (1 << COM0B1) | (1 << COM0B0);
-    // prescaler, 64
-    TCCR0B |= (1 << CS01) | (1 << CS00);
-    OCR0A = MIN_BR;  // Duty Cycle
+    DDRD |= (1 << PD6);  // OC0A als Ausgang
+    // Fast PWM, nicht-invertierend
+    TCCR0A |= (1 << WGM00) | (1 << WGM01); // Fast PWM
+    TCCR0A |= (1 << COM0A1); // Nicht-invertierend auf OC0A
+    TCCR0A |= (1 << COM0B1); // Nicht-invertierend auf OC0A
+    TCCR0B |= (1 << CS01) | (1 << CS00);  // Prescaler 64
+    OCR0A = MIN_BR;  // 50% Duty Cycle
     OCR0B = HOUR_BR;
+}
+
+void goToSleep() {
+    set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+    sleep_enable();
+    sleep_cpu();
+    sleep_disable();
 }
 
 int main() {
@@ -76,17 +84,13 @@ int main() {
     DDRD |= 0b00011111; // stunden
     DDRD |= (1<<PD7);
 
-    sei();
+    sei(); // interrupts aktivieren
 
-    while (1) {}
-}
+    //goToSleep();
 
-ISR(TIMER2_COMPA_vect) {
-    seconds++;
-    if (seconds >= 60) {
-        seconds = 0;
-        minutes++;
-        handleTimeChange();
+    while (1) {
+        //sleep_mode();
+        //_delay_ms(500);
     }
 }
 
@@ -106,6 +110,7 @@ void handleMinutes() {
 void handleHours() {
     if (hours >= 24) {
         hours = 0;
+        PORTD |=(1<<PD7);
     }
     refreshLEDs_hours();
 }
@@ -134,6 +139,16 @@ void refreshLEDs_hours() {
     }
 }
 
+ISR(TIMER2_OVF_vect) {
+    seconds++;
+    PORTD ^= (1<<PD7);
+    if (seconds >= 60) {
+        seconds = 0;
+        minutes++;
+        handleTimeChange();
+    }
+}
+
 ISR(PCINT0_vect) {
     uint8_t pb0_interrupt = (PINB & 0b1);
     uint8_t pb1_interrupt = (PINB >> 1) & 0b1;
@@ -141,6 +156,7 @@ ISR(PCINT0_vect) {
 
     // MINUTES
     if (!pb0_interrupt && !previousRisingEdge_pb0) {
+        seconds = 0;
         minutes++;
         handleTimeChange();
 
@@ -148,6 +164,7 @@ ISR(PCINT0_vect) {
     }
     // HOURS
     else if (!pb1_interrupt && !previousRisingEdge_pb1) {
+        seconds = 0;
         hours++;
         handleHours();
 
@@ -155,6 +172,7 @@ ISR(PCINT0_vect) {
     }
     // RESET
     else if (!pb2_interrupt && !previousRisingEdge_pb2) {
+        PORTD ^= (1<<PD7);
         seconds = 0;
         minutes = 0;
         hours = 0;
