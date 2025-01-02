@@ -2,7 +2,6 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
-#include <avr/delay.h>
 
 uint8_t MIN_BR = 250;
 uint8_t HOUR_BR = 250;
