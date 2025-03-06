@@ -14,6 +14,9 @@ volatile bool PB0_ps = false;
 volatile bool PB1_ps = false;
 volatile bool PB2_ps = false;
 
+volatile uint8_t pwm_brightness_level[] = {254, 240, 210, 180, 140, 80, 0};
+volatile uint8_t pwm_brightness_level_counter = 0;
+
 volatile bool PB0_cs = false;
 volatile bool PB1_cs = false;
 volatile bool PB2_cs = false;
@@ -134,26 +137,75 @@ void handleHours() {
     refreshLEDs_hours();
 }
 
+void refreshLEDs_min() {
+    for (int i=0; i<8; i++) {
+        int minVal = (minutes >> i) & 0b1; // Wert zum prüfen ob die LED an oder aus sein soll
+
+        if (minVal) {
+            PORTC |= (1 << i);
+        } else {
+            PORTC &= ~(1 << i);
+        }
+    }
+}
+
+void refreshLEDs_hours() {
+    for (int i=0; i<5; i++) {
+        int hoursVal = (hours >> i) & 0b1; // Wert zum prüfen ob die LED an oder aus sein soll
+
+        if (hoursVal) {
+            PORTD |= (1 << i);
+        } else {
+            PORTD &= ~(1 << i);
+        }
+    }
+}
+
 /* ---------------------- */
 
 
 
 void btnPressedStandardMode() {
-    if (!PB0_ps && PB0_cs) {
-        PORTC ^=(1<<PC1);
+    if (!PB0_ps && PB0_cs) { // min
+        seconds = 0;
+        minutes++;
+        handleTimeChange();
+    } else if (!PB1_ps && PB1_cs) { // hour
+        seconds = 0;
+        hours++;
+        handleHours();
+    } else if (!PB2_ps && PB2_cs) {
+        // sleeeeeeep
     }
 }
 
 void btnPressedExperimentMode() {
-
+    if (!PB0_ps && PB0_cs) { // min
+        seconds = 0;
+        minutes--;
+        handleTimeChange();
+    } else if (!PB1_ps && PB1_cs) { // hour
+        seconds = 0;
+        hours--;
+        handleHours();
+    } else if (!PB2_ps && PB2_cs) { // PWM heller stellen
+        pwm_brightness_level_counter++;
+        if (pwm_brightness_level_counter>=7) {
+            pwm_brightness_level_counter = 0;
+        }
+        OCR0A = pwm_brightness_level[pwm_brightness_level_counter];
+        OCR0B = pwm_brightness_level[pwm_brightness_level_counter];
+    }
 }
 
 // eine Sekunde vergangen
 ISR(TIMER2_OVF_vect) {
-    PORTD ^= (1<<PD3);
     btnPressedTimer++;
     if (btnPressedTimer >= 10) {
         btnPressedTimer = 0;
+    }
+    if (!IN_STANDARD_MODI) {
+        PORTD ^= (1<<PD4);
     }
 }
 
@@ -173,15 +225,16 @@ ISR(PCINT0_vect) {
     }
     else if ( !PB0_ps && PB0_cs ){ // Button wurde losgelassen
         if (btnPressedTimer >= 2) { // Modi wechseln
-            PORTC ^= (1 << PC4);
-            // changeMode();
-        } else {
-            if (IN_STANDARD_MODI) {
-                btnPressedStandardMode();
-            } else {
-                btnPressedExperimentMode();
-            }
+            IN_STANDARD_MODI = !IN_STANDARD_MODI;
+            PORTC ^= (1<<PC2);
         }
+    }
+
+    // irgendein Button wurde gedrückt
+    if (IN_STANDARD_MODI) {
+        btnPressedStandardMode();
+    } else {
+        btnPressedExperimentMode();
     }
 
     PB0_ps = PB0_cs;
