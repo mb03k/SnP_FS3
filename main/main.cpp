@@ -11,8 +11,12 @@ volatile bool previousRisingEdge_pb0 = false;
 volatile bool previousRisingEdge_pb1 = false;
 volatile bool previousRisingEdge_pb2 = false;
 
-uint8_t MIN_BR = 250;
-uint8_t HOUR_BR = 250;
+uint8_t pb0_interrupt;
+uint8_t pb1_interrupt;
+uint8_t pb2_interrupt;
+
+uint8_t MIN_BR = 254;
+uint8_t HOUR_BR = 254;
 
 void handleTimeChange();
 void handleMinutes();
@@ -31,7 +35,7 @@ void initPWM() {
 }
 
 // Zeitbasis 1s
-void initTimer() {
+void initQuartz() {
     ASSR |= (1 << AS2); // Uhrenquarz asynchron zum CPU takt laufen lassen
     TCCR2B |= (1 << CS22) | (1 << CS20); // ps 128
     TIMSK2 |= (1 << TOIE2);
@@ -70,21 +74,30 @@ void initSleep() {
     set_sleep_mode(SLEEP_MODE_IDLE);
     sleep_enable();
     sleep_cpu();
+    // CPU wakes up here after an interrupt
+    sleep_disable(); // Disable sleep mode after wake-up
+}
+
+void setPWRDown() {
+    set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+    sleep_enable();
+    sleep_cpu();
 }
 
 int main() {
     cli(); // interrupts deaktivieren
     initPWM();
-    initTimer();
+    initQuartz();
     initGPIO();
     initButtons();
     sei(); // interrupts aktivieren
 
-    PORTD |= (1<<PD7);
-
     initSleep();
 
     while (1) {
+        // hier testen wie oft die schleife iteriert wird?
+        // sollte nicht so oft sein. Eigentlich nur bei einem interrupt
+        // PORTD ^= (1<<PD4); // Jede Sekunde aufgerufen
         sleep_mode();
     }
     return 0;
@@ -134,46 +147,60 @@ void refreshLEDs_hours() {
     }
 }
 
+// !pbX_interrupt durch pull-up widerstand
+bool addMinute() {
+    return !pb0_interrupt; //&& !previousRisingEdge_pb0;
+}
+
+bool addHour() {
+    return !pb1_interrupt;// && !previousRisingEdge_pb1;
+}
+
+bool goToSleep() {
+    return !pb2_interrupt;// && !previousRisingEdge_pb2;
+}
+
 ISR(TIMER2_OVF_vect) {
-    //PORTD ^=(1<<PD7);
     seconds++;
     if (seconds >= 60) {
         seconds = 0;
         minutes++;
-        //handleTimeChange();
+        handleTimeChange();
     }
 }
 
 ISR(PCINT0_vect) {
-    uint8_t pb0_interrupt = (PINB & 0b1);
-    uint8_t pb1_interrupt = (PINB >> 1) & 0b1;
-    uint8_t pb2_interrupt = (PINB >> 2) & 0b1;
-PORTD ^=(1<<PD7);
-    // MINUTES
-    if (!pb0_interrupt && !previousRisingEdge_pb0) {
+    pb0_interrupt = (PINB & 0b1);
+    pb1_interrupt = (PINB >> 1) & 0b1;
+    pb2_interrupt = (PINB >> 2) & 0b1;
+
+    if (addMinute()) {
         seconds = 0;
         minutes++;
         handleTimeChange();
 
-        previousRisingEdge_pb0 = pb0_interrupt;
+        previousRisingEdge_pb0 = false;
     }
-    // HOURS
-    else if (!pb1_interrupt && !previousRisingEdge_pb1) {
+
+    else if (addHour()) {
         seconds = 0;
         hours++;
         handleHours();
 
-        previousRisingEdge_pb1 = pb1_interrupt;
+        previousRisingEdge_pb1 = false;
     }
-    // RESET
-    /*else if (!pb2_interrupt && !previousRisingEdge_pb2) {
-        PORTD ^= (1<<PD7);
-        seconds = 0;
+
+    else if (goToSleep()) {
+        /*seconds = 0;
         minutes = 0;
         hours = 0;
         refreshLEDs_min();
-        refreshLEDs_hours();
+        refreshLEDs_hours();*/
 
+        setPWRDown();
         previousRisingEdge_pb2 = pb2_interrupt;
-    }*/
+    }
+
+    // CPU wakes up here after an interrupt
+    sleep_disable(); // Disable sleep mode after wake-up
 }
