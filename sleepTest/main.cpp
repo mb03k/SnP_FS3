@@ -24,24 +24,17 @@ void initPWM() {
     OCR0B = 240;
 }
 
-void goToSleep() {
-    set_sleep_mode(SLEEP_MODE_PWR_SAVE);
-    sleep_enable();
-    sleep_cpu();
-    sleep_disable();
-}
-
 int main() {
     init_timer();
     initPWM();
     cli(); // Interrupts deaktivieren
 
-    DDRC |= 0b00111111; // Minuten
-    DDRD |= 0b00011111; // Stunden
+    DDRD |= (1<<PD1);
     DDRD |= (1<<PD7);
+    PORTD |= (1<<PD1);
     sei(); // Interrupts aktivieren
 
-    set_sleep_mode(SLEEP_MODE_IDLE);
+    set_sleep_mode(SLEEP_MODE_PWR_SAVE);
 
     while (1) {
         sleep_mode();
@@ -49,5 +42,5 @@ int main() {
 }
 
 ISR(TIMER2_OVF_vect) {
-    PORTD ^= (1 << PD7); // Status-LED toggeln
+    PORTD ^= (1 << PD1); // Status-LED toggeln
 }
