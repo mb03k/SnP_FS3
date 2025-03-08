@@ -10,16 +10,18 @@ volatile uint8_t seconds = 0;
 volatile uint8_t minutes = 0;
 volatile uint8_t hours = 0;
 
-volatile bool PB0_ps = false;
-volatile bool PB1_ps = false;
-volatile bool PB2_ps = false;
+volatile bool PB0_cs;
+volatile bool PB1_cs;
+volatile bool PB2_cs;
 
-volatile uint8_t pwm_brightness_level[] = {254, 240, 210, 180, 140, 80, 0};
+// mit true initialisieren da sonst beim ersten Press die if-Bedingungen immer als True angenommen werden
+volatile bool PB0_ps = true;
+volatile bool PB1_ps = true;
+volatile bool PB2_ps = true;
+
+
+volatile uint8_t pwm_brightness_level[] = {254, 250, 240, 210, 180, 140, 80, 0};
 volatile uint8_t pwm_brightness_level_counter = 0;
-
-volatile bool PB0_cs = false;
-volatile bool PB1_cs = false;
-volatile bool PB2_cs = false;
 
 volatile uint8_t btnPressedTimer = 0;
 
@@ -138,7 +140,7 @@ void handleHours() {
 }
 
 void refreshLEDs_min() {
-    for (int i=0; i<8; i++) {
+    for (int i=0; i<6; i++) {
         int minVal = (minutes >> i) & 0b1; // Wert zum prüfen ob die LED an oder aus sein soll
 
         if (minVal) {
@@ -151,12 +153,13 @@ void refreshLEDs_min() {
 
 void refreshLEDs_hours() {
     for (int i=0; i<5; i++) {
-        int hoursVal = (hours >> i) & 0b1; // Wert zum prüfen ob die LED an oder aus sein soll
+        int hoursVal = (hours >> i) & 0b1; // Wert zum Prüfen, ob die LED an oder aus sein soll
+        int ledIndex = 4 - i; // LEDs in umgekehrter Reihenfolge anschalten
 
         if (hoursVal) {
-            PORTD |= (1 << i);
+            PORTD |= (1 << ledIndex);
         } else {
-            PORTD &= ~(1 << i);
+            PORTD &= ~(1 << ledIndex);
         }
     }
 }
@@ -164,31 +167,65 @@ void refreshLEDs_hours() {
 /* ---------------------- */
 
 
+bool risingEdge(uint8_t PB) {
+    if (!PB) {
+        return !PB0_ps && PB0_cs;
+    } else if (PB == 1) {
+        return !PB1_ps && PB1_cs;
+    } else if (PB == 2) {
+        return !PB2_ps && PB2_cs;
+    }
+    return false;
+}
 
 void btnPressedStandardMode() {
-    if (!PB0_ps && PB0_cs) { // min
-        seconds = 0;
-        minutes++;
-        handleTimeChange();
-    } else if (!PB1_ps && PB1_cs) { // hour
+    /*
+     * Prüfen ob ein Zustandswechsel gemacht werden soll
+     * (PB0 wird mehr als 2 s gehalten)
+     */
+    if (!risingEdge(0)) { // Button wurde runter gedrückt
+        btnPressedTimer = 0;
+    }
+    else if (risingEdge(0)){ // Button wurde losgelassen
+        if (btnPressedTimer >= 2) { // Modi wechseln
+            IN_STANDARD_MODI = !IN_STANDARD_MODI;
+        } else {
+            seconds = 0;
+            minutes++;
+            handleTimeChange();
+        }
+    }
+
+    if (risingEdge(1)) { // hour
         seconds = 0;
         hours++;
         handleHours();
-    } else if (!PB2_ps && PB2_cs) {
+    } else if (risingEdge(2)) {
         // sleeeeeeep
     }
 }
 
 void btnPressedExperimentMode() {
-    if (!PB0_ps && PB0_cs) { // min
-        seconds = 0;
-        minutes--;
-        handleTimeChange();
-    } else if (!PB1_ps && PB1_cs) { // hour
+    /*
+     * Prüfen ob Zustandswechsel erfolgen soll
+     */
+    if (!risingEdge(0)) { // Button wurde runter gedrückt
+        btnPressedTimer = 0;
+    }
+    else if (risingEdge(0)){ // Button wurde losgelassen
+        if (btnPressedTimer >= 2) { // Modi wechseln
+            IN_STANDARD_MODI = !IN_STANDARD_MODI;
+        } else {
+            seconds = 0;
+            minutes--;
+            handleTimeChange();
+        }
+    }
+    if (risingEdge(1)) { // hour
         seconds = 0;
         hours--;
         handleHours();
-    } else if (!PB2_ps && PB2_cs) { // PWM heller stellen
+    } else if (risingEdge(2)) { // PWM heller stellen
         pwm_brightness_level_counter++;
         if (pwm_brightness_level_counter>=7) {
             pwm_brightness_level_counter = 0;
@@ -204,6 +241,8 @@ ISR(TIMER2_OVF_vect) {
     if (btnPressedTimer >= 10) {
         btnPressedTimer = 0;
     }
+
+    // LED blinken lassen um Zeit zu messen
     if (!IN_STANDARD_MODI) {
         PORTD ^= (1<<PD4);
     }
@@ -211,24 +250,10 @@ ISR(TIMER2_OVF_vect) {
 
 // Button wurde gedrückt
 ISR(PCINT0_vect) {
+    _delay_ms(5);
     PB0_cs = (PINB & 0b1);
     PB1_cs = (PINB >> 1) & 0b1;
     PB2_cs = (PINB >> 2) & 0b1;
-
-
-    /*
-     * Prüfen ob ein Zustandswechsel gemacht werden soll
-     * (PB0 wird mehr als 2 s gehalten
-     */
-    if ( PB0_ps && !PB0_cs) { // Button wurde runter gedrückt
-        btnPressedTimer = 0;
-    }
-    else if ( !PB0_ps && PB0_cs ){ // Button wurde losgelassen
-        if (btnPressedTimer >= 2) { // Modi wechseln
-            IN_STANDARD_MODI = !IN_STANDARD_MODI;
-            PORTC ^= (1<<PC2);
-        }
-    }
 
     // irgendein Button wurde gedrückt
     if (IN_STANDARD_MODI) {
