@@ -19,6 +19,8 @@ volatile bool PB0_ps = true;
 volatile bool PB1_ps = true;
 volatile bool PB2_ps = true;
 
+bool deepsleep = false;
+
 
 volatile uint8_t pwm_brightness_level[] = {254, 250, 240, 210, 180, 140, 80, 0};
 volatile uint8_t pwm_brightness_level_counter = 0;
@@ -33,10 +35,14 @@ void handleHours();
 
 void initPWM() {
     // fast pwm, nicht invertierend
-    TCCR0A |= (1 << WGM00) | (1 << WGM01); // Fast PWM
+    /*TCCR0A |= (1 << WGM00) | (1 << WGM01); // Fast PWM
     TCCR0A |= (1 << COM0A1); // Nicht-invertierend auf OC0A
     TCCR0A |= (1 << COM0B1); // Nicht-invertierend auf OC0A
-    TCCR0B |= (1 << CS01) | (1 << CS00);  // Prescaler 64
+    TCCR0B |= (1 << CS01) | (1 << CS00);  // Prescaler 64*/
+
+    TCCR0A = (1 << WGM00) | (1 << COM0A1) | (1 << COM0B1); // 8-bit Fast PWM, Clear on Compare Match
+    TCCR0B = (1 << CS01); // ps = 8
+
     OCR0A = MIN_BR;
     OCR0B = HOUR_BR;
 }
@@ -77,17 +83,27 @@ void initButtons() {
 }
 
 void initSleep() {
-    set_sleep_mode(SLEEP_MODE_IDLE);
+    /*set_sleep_mode(SLEEP_MODE_IDLE);
     sleep_enable();
     sleep_cpu();
     // CPU wakes up here after an interrupt
-    sleep_disable(); // Disable sleep mode after wake-up
-}
+    sleep_disable(); // Disable sleep mode after wake-up*/
 
-void setPWRDown() {
-    set_sleep_mode(SLEEP_MODE_PWR_SAVE);
-    sleep_enable();
-    sleep_cpu();
+    if (deepsleep) { // PWR_DOWN
+        // set sleep mode
+        set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+        sleep_enable();
+        sei();
+        sleep_cpu();
+        PORTC^=(1<<PC2);
+    } else {
+        set_sleep_mode(SLEEP_MODE_IDLE);
+        sleep_enable();
+        sei();
+        sleep_cpu();
+        PORTC^=(1<<PC0);
+    }
+    sleep_disable();
 }
 
 int main() {
@@ -98,13 +114,12 @@ int main() {
     initButtons();
     sei(); // interrupts aktivieren
 
-    initSleep();
-
     while (1) {
         // hier testen wie oft die schleife iteriert wird?
         // sollte nicht so oft sein. Eigentlich nur bei einem interrupt
         // PORTD ^= (1<<PD4); // Jede Sekunde aufgerufen
-        sleep_mode();
+        //sleep_mode();
+        initSleep();
     }
     return 0;
 }
@@ -201,7 +216,8 @@ void btnPressedStandardMode() {
         hours++;
         handleHours();
     } else if (risingEdge(2)) {
-        // sleeeeeeep
+        PORTC^=(1<<PC4);
+        deepsleep = !deepsleep;
     }
 }
 
@@ -221,6 +237,7 @@ void btnPressedExperimentMode() {
             handleTimeChange();
         }
     }
+
     if (risingEdge(1)) { // hour
         seconds = 0;
         hours--;
