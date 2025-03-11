@@ -33,10 +33,14 @@ void handleHours();
 
 void initPWM() {
     // fast pwm, nicht invertierend
-    TCCR0A |= (1 << WGM00) | (1 << WGM01); // Fast PWM
+    /*TCCR0A |= (1 << WGM00) | (1 << WGM01); // Fast PWM
     TCCR0A |= (1 << COM0A1); // Nicht-invertierend auf OC0A
     TCCR0A |= (1 << COM0B1); // Nicht-invertierend auf OC0A
-    TCCR0B |= (1 << CS01) | (1 << CS00);  // Prescaler 64
+    TCCR0B |= (1 << CS01) | (1 << CS00);  // Prescaler 64*/
+
+    TCCR0A = (1 << WGM00) | (1 << COM0A1) | (1 << COM0B1); // 8-bit Fast PWM, Clear on Compare Match
+    TCCR0B = (1 << CS01); // ps = 8
+
     OCR0A = MIN_BR;
     OCR0B = HOUR_BR;
 }
@@ -84,12 +88,6 @@ void initSleep() {
     sleep_disable(); // Disable sleep mode after wake-up
 }
 
-void setPWRDown() {
-    set_sleep_mode(SLEEP_MODE_PWR_SAVE);
-    sleep_enable();
-    sleep_cpu();
-}
-
 int main() {
     cli(); // interrupts deaktivieren
     initPWM();
@@ -98,13 +96,12 @@ int main() {
     initButtons();
     sei(); // interrupts aktivieren
 
-    initSleep();
-
     while (1) {
         // hier testen wie oft die schleife iteriert wird?
         // sollte nicht so oft sein. Eigentlich nur bei einem interrupt
         // PORTD ^= (1<<PD4); // Jede Sekunde aufgerufen
-        sleep_mode();
+        //sleep_mode();
+        initSleep();
     }
     return 0;
 }
