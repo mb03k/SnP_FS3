@@ -40,8 +40,9 @@ void initPWM() {
     TCCR0A |= (1 << COM0B1); // Nicht-invertierend auf OC0A
     TCCR0B |= (1 << CS01) | (1 << CS00);  // Prescaler 64*/
 
-    TCCR0A = (1 << WGM00) | (1 << COM0A1) | (1 << COM0B1); // 8-bit Fast PWM, Clear on Compare Match
-    TCCR0B = (1 << CS01); // ps = 8
+    TCCR0A |= (1 << WGM00); // 8-bit Fast PWM
+    TCCR0A |= (1 << COM0A1) | (1 << COM0B1); // compare-match-interrupt
+    TCCR0B |= (1 << CS01); // ps = 8
 
     OCR0A = MIN_BR;
     OCR0B = HOUR_BR;
@@ -83,27 +84,19 @@ void initButtons() {
 }
 
 void initSleep() {
-    /*set_sleep_mode(SLEEP_MODE_IDLE);
-    sleep_enable();
-    sleep_cpu();
-    // CPU wakes up here after an interrupt
-    sleep_disable(); // Disable sleep mode after wake-up*/
-
     if (deepsleep) { // PWR_DOWN
         // set sleep mode
         set_sleep_mode(SLEEP_MODE_PWR_SAVE);
         sleep_enable();
         sei();
         sleep_cpu();
-        PORTC^=(1<<PC2);
     } else {
         set_sleep_mode(SLEEP_MODE_IDLE);
         sleep_enable();
         sei();
         sleep_cpu();
-        PORTC^=(1<<PC0);
     }
-    sleep_disable();
+    sleep_disable(); // wacht hier bei interrupt auf
 }
 
 int main() {
@@ -193,12 +186,27 @@ bool risingEdge(uint8_t PB) {
     return false;
 }
 
+void handleModeChange(int increase_num) {
+    if (!risingEdge(0)) {
+        btnPressedTimer = 0;
+    }
+    else if (risingEdge(0)) {
+        if (btnPressedTimer >= 2) {
+            IN_STANDARD_MODI = !IN_STANDARD_MODI;
+        } else {
+            seconds = 0;
+            minutes += increase_num;
+            handleTimeChange();
+        }
+    }
+}
+
 void btnPressedStandardMode() {
     /*
      * Prüfen ob ein Zustandswechsel gemacht werden soll
      * (PB0 wird mehr als 2 s gehalten)
      */
-    if (!risingEdge(0)) { // Button wurde runter gedrückt
+    /*if (!risingEdge(0)) { // Button wurde runter gedrückt
         btnPressedTimer = 0;
     }
     else if (risingEdge(0)){ // Button wurde losgelassen
@@ -209,7 +217,9 @@ void btnPressedStandardMode() {
             minutes++;
             handleTimeChange();
         }
-    }
+    }*/
+
+    handleModeChange(1);
 
     if (risingEdge(1)) { // hour
         seconds = 0;
@@ -225,7 +235,7 @@ void btnPressedExperimentMode() {
     /*
      * Prüfen ob Zustandswechsel erfolgen soll
      */
-    if (!risingEdge(0)) { // Button wurde runter gedrückt
+    /*if (!risingEdge(0)) { // Button wurde runter gedrückt
         btnPressedTimer = 0;
     }
     else if (risingEdge(0)){ // Button wurde losgelassen
@@ -236,7 +246,9 @@ void btnPressedExperimentMode() {
             minutes--;
             handleTimeChange();
         }
-    }
+    }*/
+
+    handleModeChange(-1);
 
     if (risingEdge(1)) { // hour
         seconds = 0;
