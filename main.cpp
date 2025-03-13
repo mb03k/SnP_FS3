@@ -34,15 +34,20 @@ void handleTimeChange();
 void handleHours();
 
 void initPWM() {
+
+    /*
+     * Schauen welche Funktion besser funktioniert
+     */
+
     // fast pwm, nicht invertierend
-    /*TCCR0A |= (1 << WGM00) | (1 << WGM01); // Fast PWM
+    TCCR0A |= (1 << WGM00) | (1 << WGM01); // Fast PWM
     TCCR0A |= (1 << COM0A1); // Nicht-invertierend auf OC0A
     TCCR0A |= (1 << COM0B1); // Nicht-invertierend auf OC0A
-    TCCR0B |= (1 << CS01) | (1 << CS00);  // Prescaler 64*/
+    TCCR0B |= (1 << CS01) | (1 << CS00);  // Prescaler 64
 
-    TCCR0A |= (1 << WGM00); // 8-bit Fast PWM
+    /*TCCR0A |= (1 << WGM00); // 8-bit Fast PWM
     TCCR0A |= (1 << COM0A1) | (1 << COM0B1); // compare-match-interrupt
-    TCCR0B |= (1 << CS01); // ps = 8
+    TCCR0B |= (1 << CS01); // ps = 8*/
 
     OCR0A = MIN_BR;
     OCR0B = HOUR_BR;
@@ -64,27 +69,16 @@ void initButtons() {
     PCICR |= (1<<PCIE0); // controll register für PD7:0 aktivieren
     PCIFR |= (1<<PCIF0);
 
-    // PCINT0 bzw. Pull-Up aktivieren
-    DDRB &= ~(1<<PB0);
-    PORTB |= (1<<PB0);
-    // interrupt
-    PCMSK0 |= (1<<PCINT0);
+    // Register bzw. Pull-Ups aktivieren
+    DDRB &= ~(1<<PB0) | ~(1<<PB1) | ~(1<<PC2); // register
+    PORTB |= (1<<PB0) | (1<<PB1) | (1<<PB2); // pull-up
 
-    // PCINT1 bzw. Pull-Up aktivieren
-    DDRB &= ~(1<<PB1);
-    PORTB |= (1<<PB1);
-    // interrupt
-    PCMSK0 |= (1<<PCINT1); // mask aktivieren
-
-    // PCINT2 bzw. Pull-Up aktivieren
-    DDRB &= ~(1<<PB2);
-    PORTB |= (1<<PB2);
-    // interrupt
-    PCMSK0 |= (1<<PCINT2);
+    // interrupt register aktivieren
+    PCMSK0 |= (1<<PCINT0) | (1<<PCINT1) | (1<<PCINT2);
 }
 
 void initSleep() {
-    if (deepsleep) { // PWR_DOWN
+    if (deepsleep) {
         // set sleep mode
         set_sleep_mode(SLEEP_MODE_PWR_SAVE);
         sleep_enable();
@@ -108,10 +102,9 @@ int main() {
     sei(); // interrupts aktivieren
 
     while (1) {
-        // hier testen wie oft die schleife iteriert wird?
-        // sollte nicht so oft sein. Eigentlich nur bei einem interrupt
-        // PORTD ^= (1<<PD4); // Jede Sekunde aufgerufen
-        //sleep_mode();
+        if (IN_STANDARD_MODI) {
+            handleTimeChange();
+        }
         initSleep();
     }
     return 0;
@@ -266,6 +259,16 @@ void btnPressedExperimentMode() {
 
 // eine Sekunde vergangen
 ISR(TIMER2_OVF_vect) {
+    seconds++;
+    // hauptaufgabe: zeit messen und aktualisieren
+    if (seconds >= 1) {
+        seconds = 0;
+        minutes++;
+        handleTimeChange();
+    }
+
+
+    // Zeit messen ob Modiwechsel vorgenommen werden soll
     btnPressedTimer++;
     if (btnPressedTimer >= 10) {
         btnPressedTimer = 0;
