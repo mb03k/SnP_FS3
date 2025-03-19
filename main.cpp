@@ -21,7 +21,6 @@ volatile bool PB2_ps = true;
 
 bool deepsleep = false;
 
-
 volatile uint8_t pwm_brightness_level[] = {254, 250, 240, 210, 180, 140, 80, 0};
 volatile uint8_t pwm_brightness_level_counter = 0;
 
@@ -44,10 +43,6 @@ void initPWM() {
     TCCR0A |= (1 << COM0A1); // Nicht-invertierend auf OC0A
     TCCR0A |= (1 << COM0B1); // Nicht-invertierend auf OC0A
     TCCR0B |= (1 << CS01) | (1 << CS00);  // Prescaler 64
-
-    /*TCCR0A |= (1 << WGM00); // 8-bit Fast PWM
-    TCCR0A |= (1 << COM0A1) | (1 << COM0B1); // compare-match-interrupt
-    TCCR0B |= (1 << CS01); // ps = 8*/
 
     OCR0A = MIN_BR;
     OCR0B = HOUR_BR;
@@ -80,7 +75,7 @@ void initButtons() {
 void initSleep() {
     if (deepsleep) {
         // set sleep mode
-        set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+        set_sleep_mode(SLEEP_MODE_PWR_DOWN);
         sleep_enable();
         sei();
         sleep_cpu();
@@ -107,6 +102,7 @@ int main() {
         }
         initSleep();
     }
+
     return 0;
 }
 
@@ -195,23 +191,6 @@ void handleModeChange(int increase_num) {
 }
 
 void btnPressedStandardMode() {
-    /*
-     * Prüfen ob ein Zustandswechsel gemacht werden soll
-     * (PB0 wird mehr als 2 s gehalten)
-     */
-    /*if (!risingEdge(0)) { // Button wurde runter gedrückt
-        btnPressedTimer = 0;
-    }
-    else if (risingEdge(0)){ // Button wurde losgelassen
-        if (btnPressedTimer >= 2) { // Modi wechseln
-            IN_STANDARD_MODI = !IN_STANDARD_MODI;
-        } else {
-            seconds = 0;
-            minutes++;
-            handleTimeChange();
-        }
-    }*/
-
     handleModeChange(1);
 
     if (risingEdge(1)) { // hour
@@ -225,22 +204,6 @@ void btnPressedStandardMode() {
 }
 
 void btnPressedExperimentMode() {
-    /*
-     * Prüfen ob Zustandswechsel erfolgen soll
-     */
-    /*if (!risingEdge(0)) { // Button wurde runter gedrückt
-        btnPressedTimer = 0;
-    }
-    else if (risingEdge(0)){ // Button wurde losgelassen
-        if (btnPressedTimer >= 2) { // Modi wechseln
-            IN_STANDARD_MODI = !IN_STANDARD_MODI;
-        } else {
-            seconds = 0;
-            minutes--;
-            handleTimeChange();
-        }
-    }*/
-
     handleModeChange(-1);
 
     if (risingEdge(1)) { // hour
@@ -261,12 +224,11 @@ void btnPressedExperimentMode() {
 ISR(TIMER2_OVF_vect) {
     seconds++;
     // hauptaufgabe: zeit messen und aktualisieren
-    if (seconds >= 1) {
+    if (seconds >= 60) {
         seconds = 0;
         minutes++;
         handleTimeChange();
     }
-
 
     // Zeit messen ob Modiwechsel vorgenommen werden soll
     btnPressedTimer++;
