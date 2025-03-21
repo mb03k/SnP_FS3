@@ -10,16 +10,18 @@ volatile uint8_t seconds = 0;
 volatile uint8_t minutes = 0;
 volatile uint8_t hours = 0;
 
+// cs = current state
 volatile bool PB0_cs;
 volatile bool PB1_cs;
 volatile bool PB2_cs;
 
 // mit true initialisieren da sonst beim ersten Press die if-Bedingungen immer als True angenommen werden
+// ps = previous state
 volatile bool PB0_ps = true;
 volatile bool PB1_ps = true;
 volatile bool PB2_ps = true;
 
-bool deepsleep = false;
+bool DEEPSLEEP = false;
 
 volatile uint8_t pwm_brightness_level[] = {254, 250, 240, 210, 180, 140, 80, 0};
 volatile uint8_t pwm_brightness_level_counter = 0;
@@ -28,6 +30,8 @@ volatile uint8_t btnPressedTimer = 0;
 
 uint8_t MIN_BR = 254;
 uint8_t HOUR_BR = 254;
+
+volatile uint8_t SLEEP_AFTER_INACTIVITY = 0;
 
 void handleTimeChange();
 void handleHours();
@@ -73,14 +77,22 @@ void initButtons() {
 }
 
 void initSleep() {
-    if (deepsleep) {
-        // set sleep mode
-        set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+    if (DEEPSLEEP) {
+        // LEDs als Eingang definieren (sie gar nicht angehen lassen)
+        DDRC &= 0b11000000; // minuten
+        DDRD &= 0b11100000; // stunden
+        set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+
         sleep_enable();
         sei();
         sleep_cpu();
     } else {
+        // LEDs als Eingang definieren (sie gar nicht angehen lassen)
+        DDRC |= 0b00111111; // minuten
+        DDRD |= 0b11111111; // stunden
+        DDRC &= ~(1<<PC6);
         set_sleep_mode(SLEEP_MODE_IDLE);
+
         sleep_enable();
         sei();
         sleep_cpu();
@@ -99,14 +111,17 @@ int main() {
     while (1) {
         if (IN_STANDARD_MODI) {
             handleTimeChange();
+
+            if (SLEEP_AFTER_INACTIVITY >= 10) {
+                DEEPSLEEP = true;
+                SLEEP_AFTER_INACTIVITY = 0;
+                initSleep();
+            }
         }
         initSleep();
     }
-
     return 0;
 }
-
-
 
 /*
  *  Button gedrückt / eine Minute vergangen:
@@ -198,8 +213,7 @@ void btnPressedStandardMode() {
         hours++;
         handleHours();
     } else if (risingEdge(2)) {
-        PORTC^=(1<<PC4);
-        deepsleep = !deepsleep;
+        DEEPSLEEP = !DEEPSLEEP;
     }
 }
 
@@ -223,17 +237,14 @@ void btnPressedExperimentMode() {
 // eine Sekunde vergangen
 ISR(TIMER2_OVF_vect) {
     seconds++;
+    btnPressedTimer++;
+    SLEEP_AFTER_INACTIVITY++;
+
     // hauptaufgabe: zeit messen und aktualisieren
     if (seconds >= 60) {
         seconds = 0;
         minutes++;
         handleTimeChange();
-    }
-
-    // Zeit messen ob Modiwechsel vorgenommen werden soll
-    btnPressedTimer++;
-    if (btnPressedTimer >= 10) {
-        btnPressedTimer = 0;
     }
 
     // LED blinken lassen um Zeit zu messen
@@ -244,6 +255,7 @@ ISR(TIMER2_OVF_vect) {
 
 // Button wurde gedrückt
 ISR(PCINT0_vect) {
+    SLEEP_AFTER_INACTIVITY = 0;
     PB0_cs = (PINB & 0b1);
     PB1_cs = (PINB >> 1) & 0b1;
     PB2_cs = (PINB >> 2) & 0b1;
