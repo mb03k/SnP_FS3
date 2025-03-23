@@ -31,6 +31,8 @@ volatile uint8_t btnPressedTimer = 0;
 uint8_t MIN_BR = 254;
 uint8_t HOUR_BR = 254;
 
+volatile uint16_t schaltsekunden = 0;
+
 volatile uint8_t SLEEP_AFTER_INACTIVITY = 0;
 
 void handleTimeChange();
@@ -110,7 +112,9 @@ int main() {
 
     while (1) {
         if (IN_STANDARD_MODI) {
-            handleTimeChange();
+            if (!DEEPSLEEP) {
+                handleTimeChange();
+            }
 
             if (SLEEP_AFTER_INACTIVITY >= 10) {
                 DEEPSLEEP = true;
@@ -180,14 +184,16 @@ void refreshLEDs_hours() {
 
 
 bool risingEdge(uint8_t PB) {
-    if (!PB) {
-        return !PB0_ps && PB0_cs;
-    } else if (PB == 1) {
-        return !PB1_ps && PB1_cs;
-    } else if (PB == 2) {
-        return !PB2_ps && PB2_cs;
+    switch (PB) {
+        case 0:
+            return !PB0_ps && PB0_cs;
+        case 1:
+            return !PB1_ps && PB1_cs;
+        case 2:
+            return !PB2_ps && PB2_cs;
+        default:
+            return false;
     }
-    return false;
 }
 
 void handleModeChange(int increase_num) {
@@ -237,8 +243,16 @@ void btnPressedExperimentMode() {
 // eine Sekunde vergangen
 ISR(TIMER2_OVF_vect) {
     seconds++;
+    schaltsekunden++;
     btnPressedTimer++;
     SLEEP_AFTER_INACTIVITY++;
+
+    // Schaltsekunde einfügen
+    // 499.3023 Hz -> nach 714,2857 Sekunden -> 11,9 Minuten
+    if (schaltsekunden >= 714) {
+        seconds++;
+        schaltsekunden = 0;
+    }
 
     // hauptaufgabe: zeit messen und aktualisieren
     if (seconds >= 60) {
