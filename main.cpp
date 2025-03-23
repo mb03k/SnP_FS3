@@ -112,9 +112,8 @@ int main() {
 
     while (1) {
         if (IN_STANDARD_MODI) {
-            if (!DEEPSLEEP) {
-                handleTimeChange();
-            }
+            handleTimeChange();
+
 
             if (SLEEP_AFTER_INACTIVITY >= 10) {
                 DEEPSLEEP = true;
@@ -197,13 +196,13 @@ bool risingEdge(uint8_t PB) {
 }
 
 void handleModeChange(int increase_num) {
-    if (!risingEdge(0)) {
+    if (!risingEdge(0)) { // beim drücken zum messen wie lange gedrückt wurde
         btnPressedTimer = 0;
     }
     else if (risingEdge(0)) {
-        if (btnPressedTimer >= 2) {
+        if (btnPressedTimer >= 2) { // Modus wechseln
             IN_STANDARD_MODI = !IN_STANDARD_MODI;
-        } else {
+        } else { // minuten erhöhen/verringern
             seconds = 0;
             minutes += increase_num;
             handleTimeChange();
@@ -214,11 +213,11 @@ void handleModeChange(int increase_num) {
 void btnPressedStandardMode() {
     handleModeChange(1);
 
-    if (risingEdge(1)) { // hour
+    if (risingEdge(1)) { // stunden erhöhen
         seconds = 0;
         hours++;
         handleHours();
-    } else if (risingEdge(2)) {
+    } else if (risingEdge(2)) { // Schlafmodus toggeln
         DEEPSLEEP = !DEEPSLEEP;
     }
 }
@@ -226,7 +225,7 @@ void btnPressedStandardMode() {
 void btnPressedExperimentMode() {
     handleModeChange(-1);
 
-    if (risingEdge(1)) { // hour
+    if (risingEdge(1)) { // stunden verringern
         seconds = 0;
         hours--;
         handleHours();
@@ -274,7 +273,6 @@ ISR(PCINT0_vect) {
     PB1_cs = (PINB >> 1) & 0b1;
     PB2_cs = (PINB >> 2) & 0b1;
 
-    // irgendein Button wurde gedrückt
     if (IN_STANDARD_MODI) {
         btnPressedStandardMode();
     } else {
