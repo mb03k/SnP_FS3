@@ -39,11 +39,6 @@ void handleTimeChange();
 void handleHours();
 
 void initPWM() {
-
-    /*
-     * Schauen welche Funktion besser funktioniert
-     */
-
     // fast pwm, nicht invertierend
     TCCR0A |= (1 << WGM00) | (1 << WGM01); // Fast PWM
     TCCR0A |= (1 << COM0A1); // Nicht-invertierend auf OC0A
@@ -67,7 +62,7 @@ void initGPIO() {
 }
 
 void initButtons() {
-    PCICR |= (1<<PCIE0); // controll register für PD7:0 aktivieren
+    PCICR |= (1<<PCIE0); // controll register für PB aktivieren
     PCIFR |= (1<<PCIF0);
 
     // Register bzw. Pull-Ups aktivieren
@@ -92,7 +87,7 @@ void initSleep() {
         // LEDs als Eingang definieren (sie gar nicht angehen lassen)
         DDRC |= 0b00111111; // minuten
         DDRD |= 0b11111111; // stunden
-        DDRC &= ~(1<<PC6);
+        //DDRC &= ~(1<<PC6);
         set_sleep_mode(SLEEP_MODE_IDLE);
 
         sleep_enable();
@@ -247,8 +242,8 @@ ISR(TIMER2_OVF_vect) {
     SLEEP_AFTER_INACTIVITY++;
 
     // Schaltsekunde einfügen
-    // 499.3023 Hz -> nach 714,2857 Sekunden -> 11,9 Minuten
-    if (schaltsekunden >= 714) {
+    // 499.3023 Hz -> nach 716,6404 Sekunden -> 11,9 Minuten
+    if (schaltsekunden >= 717) {
         seconds++;
         schaltsekunden = 0;
     }
