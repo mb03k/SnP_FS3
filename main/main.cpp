@@ -4,23 +4,15 @@
 #include <avr/sleep.h>
 #include <util/delay.h>
 
-volatile bool PD2_cs;
-volatile bool PD3_cs;
-volatile bool PB2_cs;
 
-volatile bool PD2_ps = true;
-volatile bool PD3_ps = true;
+uint8_t MIN_BR = 254;
+uint8_t HOUR_BR = 254;
+
+volatile bool PB2_cs = true;
 volatile bool PB2_ps = true;
 
-
-void initGPIO() {
-    // minuten
-    DDRC |= 0b00111111;
-    // stunden
-    DDRD |= 0b10110011;
-    //DDRD |= (1 << PD0) | (1 << PD1) | (1 << PD4) | (1<<PD5) | (1 << PD7);
-    DDRB |= (1 << PB0);
-}
+volatile uint16_t schaltsekunden = 0;
+volatile uint8_t SLEEP_AFTER_INACTIVITY = 0;
 
 void initPWM() {
     // fast pwm, nicht invertierend
@@ -29,17 +21,38 @@ void initPWM() {
     TCCR0A |= (1 << COM0B1); // Nicht-invertierend auf OC0A
     TCCR0B |= (1 << CS01) | (1 << CS00);  // Prescaler 64
 
-    OCR0A = 128;
-    OCR0B = 128;
+    OCR0A = MIN_BR;
+    OCR0B = HOUR_BR;
+}
+
+// Zeitbasis 1s
+void initQuartz() {
+    ASSR |= (1 << AS2); // Uhrenquarz asynchron zum CPU takt laufen lassen
+    TCCR2B |= (1 << CS22) | (1 << CS20); // ps 128
+    TIMSK2 |= (1 << TOIE2);
+}
+
+void initGPIO() {
+    // minuten
+    DDRC |= (1<<PC0) | (1<<PC1) | (1<<PC2) | (1<<PC3) | (1<<PC4) | (1<<PC5);
+
+    // stunden
+    DDRD |= (1<<PD0) | (1<<PD1) | (1<<PD4) | (1<<PD7);
+    DDRB |= (1<<PB0);
+
+    // PWM -> egal ob in- oder output
+    DDRD |= (1<<PD5) | (1<<PD6);
+
+    // taster
+    DDRD &= ~(1<<PD2);
+    DDRD &= ~(1<<PD3);
 }
 
 void initButtons() {
-    cli(); // deaktiviert interrupts
-
     // INT0 und INT1 setup
     DDRD &= ~(1 << PD2) & ~(1 << PD3); // Pins als Eingänge
     PORTD |= (1 << PD2) | (1 << PD3); // Pull-Up
-    EICRA |= (1 << ISC01) | (1 << ISC11); // falling edge
+    EICRA |= (1 << ISC10) | (1 << ISC11); // falling edge
     EIMSK |= (1 << INT0) | (1 << INT1); // externe Interrupts aktivieren
 
     // PB sleep button bleibt
@@ -47,34 +60,38 @@ void initButtons() {
     PORTB |= (1 << PB2); // pull up
     PCICR |= (1<<PCIE0); // Pin Change Interrupt Controll Register
     PCMSK0 |=(1<<PCINT2); // interrupt register aktivieren
-
-    sei(); // aktiviert interrupts
 }
 
 int main() {
+    cli(); // interrupts deaktivieren
+    initPWM();
     initGPIO();
     initButtons();
-    initPWM();
+    sei(); // interrupts aktivieren
 
     while (1) {
     }
     return 0;
 }
 
-// Pin Change Interrupt for PB2 only (PCINT2)
+// Button wurde gedrückt
 ISR(PCINT0_vect) {
-    PORTC ^= (1<<PC5);
-    _delay_ms(400);
+    SLEEP_AFTER_INACTIVITY = 0;
+    PB2_cs = (PINB >> 2) & 0b1;
+
+    if (!PB2_ps && PB2_cs) { // rising edge
+        PORTC ^= (1<<PC5);
+    }
+
+    PB2_ps = PB2_cs;
 }
 
-// INT0 - Button on PD2 (Minutes / Mode Switch)
+// INT0
 ISR(INT0_vect) {
-    PORTC ^= (1<<PC5);
-    _delay_ms(400);
+    PORTC ^= (1<<PC4);
 }
 
-// INT1 - Button on PD3 (Hours)
+// INT1
 ISR(INT1_vect) {
-    PORTC ^= (1<<PC5);
-    _delay_ms(400);
+    PORTC ^= (1<<PC3);
 }
