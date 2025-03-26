@@ -66,7 +66,7 @@ void initButtons() {
     PCIFR |= (1<<PCIF0);
 
     // Register bzw. Pull-Ups aktivieren
-    DDRB &= ~(1<<PB0) | ~(1<<PB1) | ~(1<<PC2); // register
+    DDRB &= ~(1<<PB0) | ~(1<<PB1) | ~(1<<PB2); // register
     PORTB |= (1<<PB0) | (1<<PB1) | (1<<PB2); // pull-up
 
     // interrupt register aktivieren
